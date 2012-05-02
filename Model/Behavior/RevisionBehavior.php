@@ -512,6 +512,11 @@ class RevisionBehavior extends ModelBehavior {
 	 * @return boolean
 	 */
 	public function revertToDate(&$Model, $datetime, $cascade = false, $force_delete = false) {
+		if (empty($Model->logableAction)) {
+			$Model->logableAction = array();
+		} else {
+			$Model->logableAction = array_merge($Model->logableAction);
+		}
 		if (! $Model->id) {
 			trigger_error('RevisionBehavior: Model::id must be set', E_USER_WARNING); 
 			return null;
@@ -723,6 +728,11 @@ class RevisionBehavior extends ModelBehavior {
 	 * @return boolean
 	 */
 	public function undo(&$Model) {	
+		if (empty($Model->logableAction)) {
+			$Model->logableAction = array();
+		} else {
+			$Model->logableAction = array_merge($Model->logableAction);
+		}
 		if (! $Model->id) {
 			trigger_error('RevisionBehavior: Model::id must be set', E_USER_WARNING); return null;
 		}
@@ -740,7 +750,7 @@ class RevisionBehavior extends ModelBehavior {
 			if (isset($Model->ShadowModel->_schema[$assocAlias])) {					
 				$data[$assocAlias][$assocAlias] = explode(',',$data[$Model->alias][$assocAlias]);
 			} 
-		}	
+		}
 		$Model->logableAction['Revision'] = 'undo changes';
 		return $Model->save($data);
 	}	
@@ -875,7 +885,7 @@ class RevisionBehavior extends ModelBehavior {
                 $conditions['order'] = $Model->alias.'.version_created ASC, '.$Model->alias.'.version_id ASC';
 				$oldest = $Model->ShadowModel->find('first',$conditions);
 				$Model->ShadowModel->id = null;
-				$Model->ShadowModel->del($oldest[$Model->alias][$Model->ShadowModel->primaryKey]);	
+				$Model->ShadowModel->delete($oldest[$Model->alias][$Model->ShadowModel->primaryKey]);	
 			}			
 		}
 		return true;
