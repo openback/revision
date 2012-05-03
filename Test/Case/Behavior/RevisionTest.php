@@ -1426,9 +1426,6 @@ class RevisionTestCase extends CakeTestCase {
 			false
 		);
 
-		//@TODO understand why it is need
-		$Comment->ShadowModel->find('all', array('conditions' => array('version_id' => array(4,5))));
-
 		$Comment->Tag->delete(1);
 
 		$result = $Comment->ShadowModel->find('all', array(

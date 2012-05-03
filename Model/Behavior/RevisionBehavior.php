@@ -34,18 +34,18 @@
  * You should make these AFTER you have baked your ordinary tables as they may interfer. By default
  * the tables should be named "[prefix][model_table_name]_revs" If you wish to change the suffix you may
  * do so in the property called $revision_suffix found bellow. Also by default the behavior expects
- * the revision tables to be in the same dbconfig as the model, but you may change this on a per 
+ * the revision tables to be in the same dbconfig as the model, but you may change this on a per
  * model basis with the useDbConfig config option.
  * 
  * Add the same fields as in the live table, with 3 important differences. 
  *  - The 'id' field should NOT be the primary key, nor auto increment
- *  - Add the fields 'version_id' (int, primary key, autoincrement) and 
+ *  - Add the fields 'version_id' (int, primary key, autoincrement) and
  *    'version_created' (datetime)
  *  - Skipp fields that should not be saved in shadowtable (lft,right,weight for instance)
  * 
  * Configuration :
  * 
- *  - 'limit' : number of revisions to keep, must be at least 2 
+ *  - 'limit' : number of revisions to keep, must be at least 2
  *  - 'ignore' : array containing the name of fields to ignore
  *  - 'auto' : boolean when false the behavior will NOT generate revisions in afterSave
  *  - 'useDbConfig' : string/null Name of dbConfig to use. Null to use Model's
@@ -53,12 +53,12 @@
  * Limit functionality : 
  * The shadow table will save a revision copy when it saves live data, so the newest
  * row in the shadow table will (in most cases) be the same as the current live data.
- * The exception is when the ignore field functionality is used and the live data is 
+ * The exception is when the ignore field functionality is used and the live data is
  * updated only in those fields. 
  * 
  * Ignore field(s) functionality :
  * If you wish to be able to update certain fields without generating new revisions,
- * you can add those fields to the configuration ignore array. Any time the behavior's 
+ * you can add those fields to the configuration ignore array. Any time the behavior's
  * afterSave is called with just primary key and these fields, it will NOT generate
  * a new revision. It WILL however save these fields together with other fields when it
  * does save a revision. You will probably want to set up cron or otherwise call
@@ -82,7 +82,7 @@
  *   - revisions() got new paramter: $include_current
  *     This now defaults to false, resulting in a change from 1.1.1. See tests
  *
- * 1.1.6 => 1.2 
+ * 1.1.6 => 1.2
  *   - includes HABTM revision control (one way)
  *
  * 1.2 => 1.2.1
@@ -155,32 +155,33 @@ class RevisionBehavior extends ModelBehavior {
 	 * Manually create a revision of the current record of Model->id
 	 *
 	 * @example $this->Post->id = 5; $this->Post->createRevision();
-	 * @param object $Model
+	 * @param Model $Model
 	 * @return boolean success
 	 */
-	public function createRevision(&$Model) {	
+	public function createRevision(&$Model) {
 		if (! $Model->id) {
 			trigger_error('RevisionBehavior: Model::id must be set', E_USER_WARNING); return null;
 		}
 		if (!$Model->ShadowModel) {
 			trigger_error('RevisionBehavior: ShadowModel doesnt exist.', E_USER_WARNING); 
             return false;
-		}   
-		$habtm = array();
-		$all_habtm = $Model->getAssociated('hasAndBelongsToMany');
-		foreach ($all_habtm as $assocAlias) {
-			if (isset($Model->ShadowModel->_schema[$assocAlias])) {	
-				$habtm[] = $assocAlias;	
+		}
+		$associations = array();
+		$allAssociations = $Model->getAssociated();
+		foreach (array_keys($allAssociations) as $assocAlias) {
+			$schema = $Model->ShadowModel->schema();
+			if (isset($schema[$assocAlias])) {
+				$associations[] = $assocAlias;
 			}
 		}
 		$data = $Model->find('first', array(
 			'conditions'=>array($Model->alias.'.'.$Model->primaryKey => $Model->id), 
-			'contain' => $habtm
+			'contain' => $associations
 		));
 		$Model->ShadowModel->create($data);
 		$Model->ShadowModel->set('version_created', date('Y-m-d H:i:s'));
-		foreach ($habtm as $assocAlias) {
-			$foreign_keys = Set::extract($data,'/'.$assocAlias.'/'.$Model->{$assocAlias}->primaryKey);			
+		foreach ($associations as $assocAlias) {
+			$foreign_keys = Set::extract('/'.$assocAlias.'/'.$Model->{$assocAlias}->primaryKey, $data);
 			$Model->ShadowModel->set($assocAlias, implode(',',$foreign_keys));
 		}
 		return $Model->ShadowModel->save();
@@ -258,13 +259,13 @@ class RevisionBehavior extends ModelBehavior {
 	 * Will create a current revision of all rows in Model, if none exist.
 	 * Use this if you add the revision to a model that allready has data in
 	 * the DB.
-	 * If you have large tables or big/many fields, use $limit to reduce the 
+	 * If you have large tables or big/many fields, use $limit to reduce the
 	 * number of rows that is run at once.
 	 *
 	 * @example $this->Post->initializeRevisions();
 	 * @param object $Model
 	 * @param int $limit number of rows to initialize in one go
-	 * @return boolean 
+	 * @return boolean
 	 */
 	public function initializeRevisions(&$Model, $limit = 100) {
 		if (!$Model->ShadowModel) {
@@ -299,26 +300,31 @@ class RevisionBehavior extends ModelBehavior {
 	/**
 	 * saves revisions for rows matching page and limit given
 	 *
-	 * @param object $Model
+	 * @param Model $Model
 	 * @param int $page
 	 * @param int $limit
 	 */
 	private function init(&$Model, $page, $limit) {
-		$habtm = array();
-		$all_habtm = $Model->getAssociated('hasAndBelongsToMany');
-		foreach ($all_habtm as $assocAlias) {
-			if (isset($Model->ShadowModel->_schema[$assocAlias])) {	
-				$habtm[] = $assocAlias;	
+		$associations = array();
+		$allAssociations = $Model->getAssociated();
+		foreach (array_keys($allAssociations) as $assocAlias) {
+			$schema = $Model->ShadowModel->schema();
+			if (isset($schema[$assocAlias])) {
+				$associations[] = $assocAlias;
 			}
 		}
 		$all = $Model->find('all', array(
 			'limit' => $limit, 
 			'page' => $page, 
-			'contain' => $habtm
+			'contain' => $associations
 		));
 		$version_created = date('Y-m-d H:i:s');
 		foreach ($all as $data) {
 			$Model->ShadowModel->create($data);
+			foreach ($associations as $assocAlias) {
+				$foreign_keys = Set::extract('/'.$assocAlias.'/'.$Model->{$assocAlias}->primaryKey, $data);
+				$Model->ShadowModel->set($assocAlias, implode(',',$foreign_keys));
+			}
 			$Model->ShadowModel->set('version_created', $version_created);
 			$Model->ShadowModel->save();
 		}		
@@ -428,9 +434,9 @@ class RevisionBehavior extends ModelBehavior {
 		if (!isset($options['conditions'])) {
 			$options['conditions'] = array();
 		}
-		// leave model rows out side of condtions alone  		
-		// leave model rows not edited since date alone  
-		
+		// leave model rows out side of condtions alone
+		// leave model rows not edited since date alone
+
 		$all = $Model->find('all',array('conditions'=>$options['conditions'],'fields'=>$Model->primaryKey));
 		$allIds = Set::extract($all,'/'.$Model->alias.'/'.$Model->primaryKey);		
 		
@@ -490,8 +496,10 @@ class RevisionBehavior extends ModelBehavior {
 		if ($data == false) {
 			return false;
 		}
-		foreach ($Model->getAssociated('hasAndBelongsToMany') as $assocAlias) {
-			if (isset($Model->ShadowModel->_schema[$assocAlias])) {					
+		$allAssociations = $Model->getAssociated();
+		foreach (array_keys($allAssociations) as $assocAlias) {
+			$schema = $Model->ShadowModel->schema();
+			if (isset($schema[$assocAlias])) {
 				$data[$assocAlias][$assocAlias] = explode(',',$data[$Model->alias][$assocAlias]);
 			} 
 		}	
@@ -501,7 +509,7 @@ class RevisionBehavior extends ModelBehavior {
 	/**
 	 * Revert to the oldest revision after the given datedate.
 	 * Will cascade to hasOne and hasMany associeted models if $cascade is true.
-	 * Will return false if no change is made on the main model 
+	 * Will return false if no change is made on the main model
 	 *
 	 * @example $this->Post->id = 3; $this->Post->revertToDate(date('Y-m-d H:i:s',strtotime('Yesterday')));
 	 * @example $this->Post->id = 4; $this->Post->revertToDate('2008-09-01',true);
@@ -579,9 +587,11 @@ class RevisionBehavior extends ModelBehavior {
 			return true;
 		}
 		$habtm = array();
-		foreach ($Model->getAssociated('hasAndBelongsToMany') as $assocAlias) {
-			if (isset($Model->ShadowModel->_schema[$assocAlias])) {							
-				$habtm[] = $assocAlias;					
+		$allAssociations = $Model->getAssociated();
+		foreach (array_keys($allAssociations) as $assocAlias) {
+			$schema = $Model->ShadowModel->schema();
+			if (isset($schema[$assocAlias])) {
+				$habtm[] = $assocAlias;
 			} 
 		}
 		$liveData = $Model->find('first', array(
@@ -591,8 +601,10 @@ class RevisionBehavior extends ModelBehavior {
 		$Model->logableAction['Revision'] = 'revertToDate('.$datetime.') add';
 		if ($liveData) {
 			$Model->logableAction['Revision'] = 'revertToDate('.$datetime.') edit';
-			foreach ($Model->getAssociated('hasAndBelongsToMany') as $assocAlias) {
-				if (isset($Model->ShadowModel->_schema[$assocAlias])) {		
+			$allAssociations = $Model->getAssociated();
+			foreach (array_keys($allAssociations) as $assocAlias) {
+				$schema = $Model->ShadowModel->schema();
+				if (isset($schema[$assocAlias])) {
 					$ids = Set::extract($liveData,'/'.$assocAlias.'/'.$Model->$assocAlias->primaryKey);	
 					if (empty($ids) || is_string($ids)) {
 						$liveData[$Model->alias][$assocAlias] = '';				
@@ -745,9 +757,11 @@ class RevisionBehavior extends ModelBehavior {
 			$Model->logableAction['Revision'] = 'undo add';
 			$Model->delete($Model->id);
 			return false;
-		}		
-		foreach ($Model->getAssociated('hasAndBelongsToMany') as $assocAlias) {
-			if (isset($Model->ShadowModel->_schema[$assocAlias])) {					
+		}
+		$allAssociations = $Model->getAssociated();
+		foreach (array_keys($allAssociations) as $assocAlias) {
+			$schema = $Model->ShadowModel->schema();
+			if (isset($schema[$assocAlias])) {
 				$data[$assocAlias][$assocAlias] = explode(',',$data[$Model->alias][$assocAlias]);
 			} 
 		}
@@ -815,7 +829,8 @@ class RevisionBehavior extends ModelBehavior {
 			$Model->ShadowModel->set('id',$Model->id);
 			$Model->ShadowModel->set('version_created',date('Y-m-d H:i:s'));
 			foreach ($Model->data as $alias => $alias_data) {
-				if (isset($Model->ShadowModel->_schema[$alias])) {
+				$schema = $Model->ShadowModel->schema();
+				if (isset($schema[$alias])) {
 					if (isset($alias_data[$alias]) && !empty($alias_data[$alias])) {
 						$Model->ShadowModel->set($alias,implode(',',$alias_data[$alias]));
 					}
@@ -827,11 +842,13 @@ class RevisionBehavior extends ModelBehavior {
 		}  	
 			
 		$habtm = array();
-		foreach ($Model->getAssociated('hasAndBelongsToMany') as $assocAlias) {
-			if (isset($Model->ShadowModel->_schema[$assocAlias])) {					
-				$habtm[] = $assocAlias;	
-			} 
-		}				
+		$allAssociations = $Model->getAssociated();
+		foreach (array_keys($allAssociations) as $assocAlias) {
+			$schema = $Model->ShadowModel->schema();
+			if (isset($schema[$assocAlias])) {
+				$habtm[] = $assocAlias;
+			}
+		}
 		$data = $Model->find('first', array(
 	       		'contain'=> $habtm,
 	       		'conditions'=>array($Model->alias.'.'.$Model->primaryKey => $Model->id)));
@@ -896,7 +913,7 @@ class RevisionBehavior extends ModelBehavior {
 	 * on their relationship. BeforeDelete identifies the related models that will need
 	 * to do the revision update in afterDelete.
 	 *
-	 * @param object $Model
+	 * @param Model $Model
 	 * @return boolean
 	 */
 	public function beforeDelete(&$Model) {
@@ -905,17 +922,24 @@ class RevisionBehavior extends ModelBehavior {
 		}		
 		if (!$Model->ShadowModel) {
             return true;
-		}   
-		foreach ($Model->hasAndBelongsToMany as $assocAlias => $a) {
-			if (isset($Model->{$assocAlias}->ShadowModel->_schema[$Model->alias])) {										
-				$joins =  $Model->{$a['with']}->find('all',array(
-					'recursive' => -1,
-					'conditions' => array(
-						$a['foreignKey'] => $Model->id
-					)
-				));
-				$this->deleteUpdates[$Model->alias][$assocAlias] = Set::extract($joins,'/'.$a['with'].'/'.$a['associationForeignKey']);
-			} 
+		}
+		$modelAssocs = array(
+			$Model->hasOne,
+			$Model->hasMany,
+			$Model->belongsTo,
+			$Model->hasAndBelongsToMany
+		);
+		foreach ($modelAssocs as $modelAssoc) {
+			foreach ($modelAssoc as $assocAlias => $a) {
+				$schema = $Model->{$assocAlias}->ShadowModel->schema();
+				if (isset($schema[$Model->alias])) {
+					$joins =  $Model->{$a['with']}->find('all',array(
+						'recursive' => -1,
+						'conditions' => array($a['foreignKey'] => $Model->id)
+					));
+					$this->deleteUpdates[$Model->alias][$assocAlias] = Set::extract($joins,'/'.$a['with'].'/'.$a['associationForeignKey']);
+				}
+			}
 		}
 		return true;
 	}
@@ -939,11 +963,13 @@ class RevisionBehavior extends ModelBehavior {
 		}
 		
 		$habtm = array();
-		foreach ($Model->getAssociated('hasAndBelongsToMany') as $assocAlias) {
-			if (isset($Model->ShadowModel->_schema[$assocAlias])) {					
-				$habtm[] = $assocAlias;	
+		$allAssociations = $Model->getAssociated();
+		foreach (array_keys($allAssociations) as $assocAlias) {
+			$schema = $Model->ShadowModel->schema();
+			if (isset($schema[$assocAlias])) {
+				$habtm[] = $assocAlias;
 			} 
-		}		
+		}
 		$this->oldData[$Model->alias] = $Model->find('first', array(
 	       		'contain'=> $habtm,
 	       		'conditions'=>array($Model->alias.'.'.$Model->primaryKey => $Model->id)));
@@ -978,20 +1004,45 @@ class RevisionBehavior extends ModelBehavior {
             $Model->ShadowModel = false;
             return false;
 		}  
-    $useShadowModel = $this->settings[$Model->alias]['model'];
+		$useShadowModel = $this->settings[$Model->alias]['model'];
 		if (is_string($useShadowModel) && App::import('model',$useShadowModel)) {
-      $Model->ShadowModel = new $useShadowModel(false, $shadow_table, $dbConfig);
-    } else {
-      $Model->ShadowModel = new Model(false, $shadow_table, $dbConfig);
-    }			
-    if ($Model->tablePrefix) {
-      $Model->ShadowModel->tablePrefix = $Model->tablePrefix;
-    }
+			$Model->ShadowModel = new $useShadowModel(false, $shadow_table, $dbConfig);
+		} else {
+			$Model->ShadowModel = new Model(false, $shadow_table, $dbConfig);
+		}
+		if ($Model->tablePrefix) {
+			$Model->ShadowModel->tablePrefix = $Model->tablePrefix;
+		}
 		$Model->ShadowModel->alias = $Model->alias;
 		$Model->ShadowModel->primaryKey = 'version_id';
 		$Model->ShadowModel->order = 'version_created DESC, version_id DESC';
 		return true;
 	}
 
+	public function rebuildData(&$Model, $shadowData) {
+		$associations = array();
+		$allAssociations = $Model->getAssociated();
+		foreach (array_keys($allAssociations) as $assocAlias) {
+			$schema = $Model->ShadowModel->schema();
+			if (isset($schema[$assocAlias])) {
+				$associations[] = $assocAlias;
+			}
+		}
+
+		foreach ($associations as $assocAlias) {
+			$foreign_keys = explode(',', $shadowData[$Model->alias][$assocAlias]);
+			$values = $Model->{$assocAlias}->find('all', array(
+				'conditions' => array(
+					$assocAlias . '.' . $Model->{$assocAlias}->primaryKey => $foreign_keys
+				),
+			));
+			foreach ($values as $key => $value) {
+				$shadowData[$assocAlias][$key] = $value[$assocAlias];
+			}
+			unset($shadowData[$Model->alias][$assocAlias]);
+		}
+
+		return $shadowData;
+	}
 }
 ?>
