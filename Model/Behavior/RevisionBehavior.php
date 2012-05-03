@@ -181,8 +181,8 @@ class RevisionBehavior extends ModelBehavior {
 		$Model->ShadowModel->create($data);
 		$Model->ShadowModel->set('version_created', date('Y-m-d H:i:s'));
 		foreach ($associations as $assocAlias) {
-			$foreign_keys = Set::extract('/'.$assocAlias.'/'.$Model->{$assocAlias}->primaryKey, $data);
-			$Model->ShadowModel->set($assocAlias, implode(',',$foreign_keys));
+			$encodedData = json_encode($data[$assocAlias]);
+			$Model->ShadowModel->set($assocAlias, $encodedData);
 		}
 		return $Model->ShadowModel->save();
 	}
@@ -322,8 +322,8 @@ class RevisionBehavior extends ModelBehavior {
 		foreach ($all as $data) {
 			$Model->ShadowModel->create($data);
 			foreach ($associations as $assocAlias) {
-				$foreign_keys = Set::extract('/'.$assocAlias.'/'.$Model->{$assocAlias}->primaryKey, $data);
-				$Model->ShadowModel->set($assocAlias, implode(',',$foreign_keys));
+				$encodedData = json_encode($data[$assocAlias]);
+				$Model->ShadowModel->set($assocAlias, $encodedData);
 			}
 			$Model->ShadowModel->set('version_created', $version_created);
 			$Model->ShadowModel->save();
@@ -492,7 +492,7 @@ class RevisionBehavior extends ModelBehavior {
 			trigger_error('RevisionBehavior: ShadowModel doesnt exist.', E_USER_WARNING); 
             return false;
 		}   
-		$data = $Model->ShadowModel->find('first',array('conditions'=>array('version_id'=>$version_id)));	
+		$data = $Model->ShadowModel->find('first',array('conditions'=>array('version_id'=>$version_id)));
 		if ($data == false) {
 			return false;
 		}
@@ -500,10 +500,10 @@ class RevisionBehavior extends ModelBehavior {
 		foreach (array_keys($allAssociations) as $assocAlias) {
 			$schema = $Model->ShadowModel->schema();
 			if (isset($schema[$assocAlias])) {
-				$data[$assocAlias][$assocAlias] = explode(',',$data[$Model->alias][$assocAlias]);
+				$data[$assocAlias] = json_decode($data[$Model->alias][$assocAlias], true);
 			} 
 		}	
-		return $Model->save($data);
+		return $Model->saveAssociated($data);
 	}
 	
 	/**
@@ -609,9 +609,9 @@ class RevisionBehavior extends ModelBehavior {
 					if (empty($ids) || is_string($ids)) {
 						$liveData[$Model->alias][$assocAlias] = '';				
 					} else {
-						$liveData[$Model->alias][$assocAlias] = implode(',',$ids);
+						$liveData[$Model->alias][$assocAlias] = json_encode($liveData[$assocAlias]);
 					}			
-					$data[$assocAlias][$assocAlias] = explode(',',$data[$Model->alias][$assocAlias]);
+					$data[$assocAlias][$assocAlias] = json_decode($data[$Model->alias][$assocAlias], true);
 				} 
 				unset($liveData[$assocAlias]);
 			}				
@@ -639,7 +639,7 @@ class RevisionBehavior extends ModelBehavior {
 		$Model->ShadowModel->set('version_created', date('Y-m-d H:i:s'));
 		$Model->ShadowModel->save();
 		$Model->version_id = $Model->ShadowModel->id;
-		$success =  $Model->save($data);
+		$success =  $Model->saveAssociated($data);
 		$this->settings[$Model->alias]['auto'] = $auto;		
 		return $success;
 	}
@@ -682,7 +682,7 @@ class RevisionBehavior extends ModelBehavior {
 	 * Calls Model::beforeUndelete and Model::afterUndelete
 	 *
 	 * @example $this->Post->id = 7; $this->Post->undelete(); 
-	 * @param object $Model
+	 * @param Model $Model
 	 * @return boolean
 	 */
 	public function undelete(&$Model) {
@@ -714,7 +714,7 @@ class RevisionBehavior extends ModelBehavior {
 		$Model->create($data,true);
 		$auto_setting = $this->settings[$Model->alias]['auto'];
 		$this->settings[$Model->alias]['auto'] = false;
-		$save_success =  $Model->save();
+		$save_success =  $Model->saveAssociated();
 		$this->settings[$Model->alias]['auto'] = $auto_setting;
 		if (!$save_success) {
 			return false;
@@ -729,7 +729,7 @@ class RevisionBehavior extends ModelBehavior {
 		if (method_exists($Model,'afterUndelete')) {
 			$afterUndeleteSuccess = $Model->afterUndelete();
 		}
-		return $afterUndeleteSuccess;	
+		return $afterUndeleteSuccess;
 	}
 	
 	/**
@@ -762,11 +762,12 @@ class RevisionBehavior extends ModelBehavior {
 		foreach (array_keys($allAssociations) as $assocAlias) {
 			$schema = $Model->ShadowModel->schema();
 			if (isset($schema[$assocAlias])) {
-				$data[$assocAlias][$assocAlias] = explode(',',$data[$Model->alias][$assocAlias]);
-			} 
+				$data[$assocAlias] = json_decode($data[$Model->alias][$assocAlias], true);
+			}
 		}
 		$Model->logableAction['Revision'] = 'undo changes';
-		return $Model->save($data);
+//		debug($data); ob_flush();
+		return $Model->saveAssociated($data);
 	}	
 	
 	/**
@@ -832,7 +833,7 @@ class RevisionBehavior extends ModelBehavior {
 				$schema = $Model->ShadowModel->schema();
 				if (isset($schema[$alias])) {
 					if (isset($alias_data[$alias]) && !empty($alias_data[$alias])) {
-						$Model->ShadowModel->set($alias,implode(',',$alias_data[$alias]));
+						$Model->ShadowModel->set($alias, json_encode($alias_data[$alias]));
 					}
 				}
 			}
@@ -841,52 +842,50 @@ class RevisionBehavior extends ModelBehavior {
 			return $success;	
 		}  	
 			
-		$habtm = array();
+		$associations = array();
 		$allAssociations = $Model->getAssociated();
 		foreach (array_keys($allAssociations) as $assocAlias) {
 			$schema = $Model->ShadowModel->schema();
 			if (isset($schema[$assocAlias])) {
-				$habtm[] = $assocAlias;
+				$associations[] = $assocAlias;
 			}
 		}
 		$data = $Model->find('first', array(
-	       		'contain'=> $habtm,
+	       		'contain'=> $associations,
 	       		'conditions'=>array($Model->alias.'.'.$Model->primaryKey => $Model->id)));
 
-        $changeDetected = false;
-		foreach ($data[$Model->alias] as $key => $value) {
-   			if ( isset($data[$Model->alias][$Model->primaryKey]) 
-   					&& !empty($this->oldData[$Model->alias]) 
-   					&& isset($this->oldData[$Model->alias][$Model->alias][$key])) {
-   						
-   				$old_value = $this->oldData[$Model->alias][$Model->alias][$key];
-   			} else {
-   				$old_value = '';
-   			}
-   			if ($value != $old_value && !in_array($key,$this->settings[$Model->alias]['ignore'])) {
-   				$changeDetected = true;				
-   			}
-   		}
+		$changes = $this->array_diff_recursive(
+			$data[$Model->alias],
+			$this->oldData[$Model->alias][$Model->alias]
+		);
+		$changesWithoutIgnore = array();
+		foreach ($changes as $key => $value) {
+			if (!in_array($key,$this->settings[$Model->alias]['ignore'])) {
+				$changesWithoutIgnore[$key] = $value;
+			}
+		}
+		$changeDetected = !empty($changesWithoutIgnore);
    		$Model->ShadowModel->create($data);
-   		if (!empty($habtm)) {
-	   		foreach ($habtm as $assocAlias) {
-	   			if (in_array($assocAlias,$this->settings[$Model->alias]['ignore'])) {
-	   				continue;
-	   			}				
-	   			$oldIds = Set::extract($this->oldData[$Model->alias],$assocAlias.'.{n}.id');
-          if (!isset($Model->data[$assocAlias])) {					
-            $Model->ShadowModel->set($assocAlias, implode(',',$oldIds));
-            continue;
-          }
-          $currentIds = Set::extract($data,$assocAlias.'.{n}.id');
-          $id_changes = array_diff($currentIds,$oldIds);
-          if (!empty($id_changes)) {
-            $Model->ShadowModel->set($assocAlias, implode(',',$currentIds));
-            $changeDetected = true;
-          } else {
-            $Model->ShadowModel->set($assocAlias, implode(',',$oldIds));
-          }
-	   		}   			
+   		if (!empty($associations)) {
+			foreach ($associations as $assocAlias) {
+				if (in_array($assocAlias,$this->settings[$Model->alias]['ignore'])) {
+					continue;
+				}
+				if (!isset($Model->data[$assocAlias])) {					
+					$Model->ShadowModel->set($assocAlias, json_encode($this->oldData[$Model->alias][$assocAlias]));
+					continue;
+				}
+				$changes = $this->array_diff_recursive(
+					$data[$assocAlias],
+					$this->oldData[$Model->alias][$assocAlias]
+				);
+				if (!empty($changes)) {
+					$Model->ShadowModel->set($assocAlias, json_encode($data[$assocAlias]));
+					$changeDetected = true;
+				} else {
+					$Model->ShadowModel->set($assocAlias, json_encode($this->oldData[$Model->alias][$assocAlias]));
+				}
+			}   			
    		}
    		unset($this->oldData[$Model->alias]); 		
    		if (!$changeDetected) {
@@ -1030,19 +1029,32 @@ class RevisionBehavior extends ModelBehavior {
 		}
 
 		foreach ($associations as $assocAlias) {
-			$foreign_keys = explode(',', $shadowData[$Model->alias][$assocAlias]);
-			$values = $Model->{$assocAlias}->find('all', array(
-				'conditions' => array(
-					$assocAlias . '.' . $Model->{$assocAlias}->primaryKey => $foreign_keys
-				),
-			));
-			foreach ($values as $key => $value) {
-				$shadowData[$assocAlias][$key] = $value[$assocAlias];
-			}
+			$shadowData[$assocAlias] = json_decode($shadowData[$Model->alias][$assocAlias], true);
 			unset($shadowData[$Model->alias][$assocAlias]);
 		}
 
 		return $shadowData;
+	}
+
+	function array_diff_recursive($a, $b) {
+		$result = array();
+		if (is_array($a)) {
+			foreach ($a as $k => $v) {
+				if (isset($b[$k])) {
+					$ret = $this->array_diff_recursive($a[$k], $b[$k]);
+					if (count($ret) > 0) {
+						$result[$k] = $ret;
+					}
+				} else {
+					$result[$k] = $a[$k];
+				}
+			}
+		} else {
+			if ($a != $b) {
+				$result = $a;
+			}
+		}
+		return $result;
 	}
 }
 ?>

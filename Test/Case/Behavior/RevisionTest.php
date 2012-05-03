@@ -808,7 +808,6 @@ class RevisionTestCase extends CakeTestCase {
 		$Article->undelete();
 
 		$result = $Article->find('all');
-
 		$this->assertEqual(sizeof($result),3);
 		$this->assertEqual($result[0]['Article']['lft'], 1);
 		$this->assertEqual($result[0]['Article']['rght'],6);
@@ -1057,8 +1056,7 @@ class RevisionTestCase extends CakeTestCase {
 		sort($titles);
 		$this->assertEqual($titles, array('Fun', 'Hard', 'Trick'));
 
-		$currentIds = Set::extract($result,'Tag.{n}.id');
-		$expected = implode(',',$currentIds);
+		$expected = json_encode($result['Tag']);
 		$Comment->id = 1;
 		$result = $Comment->newest();
 		$this->assertEqual($expected, $result['Comment']['Tag']);
@@ -1071,8 +1069,7 @@ class RevisionTestCase extends CakeTestCase {
 		sort($titles);
 		$this->assertEqual($titles, array('Hard', 'News'));
 
-		$currentIds = Set::extract($result,'Tag.{n}.id');
-		$expected = implode(',',$currentIds);
+		$expected = json_encode($result['Tag']);
 		$Comment->id = 1;
 		$result = $Comment->newest();
 		$this->assertEqual(4,$result['Comment']['version_id']);
@@ -1113,7 +1110,7 @@ class RevisionTestCase extends CakeTestCase {
 		$Comment->save();
 
 		$result = $Comment->newest();
-		$this->assertEqual('2,4',$result['Comment']['Tag']);
+		$this->assertEqual(json_encode(array(2,4)), $result['Comment']['Tag']);
 	}
 
 	public function testHabtmRevIgnore() {
@@ -1276,7 +1273,11 @@ class RevisionTestCase extends CakeTestCase {
 		$Comment->id = 1;
 		$rev_one = $Comment->newest();
 		$this->assertEqual($rev_one['Comment']['title'],'Comment 1');
-		$this->assertEqual($rev_one['Comment']['Tag'], '1,2,3');
+
+		$revOneTag = json_decode($rev_one['Comment']['Tag'], true);
+		$tagsIds = Set::extract('/id', $revOneTag);
+		sort($tagsIds);
+		$this->assertEqual($tagsIds , array(1,2,3));
 		$version_id = $rev_one['Comment']['version_id'];
 
 		$Comment->create(array('Comment'=>array('id'=>1,'title'=>'Edited')));
@@ -1290,7 +1291,10 @@ class RevisionTestCase extends CakeTestCase {
 		$Comment->id = 1;
 		$rev_one = $Comment->newest();
 		$this->assertEqual($rev_one['Comment']['title'],'Edited');
-		$this->assertEqual($rev_one['Comment']['Tag'], '1,2,3');
+		$revOneTag = json_decode($rev_one['Comment']['Tag'], true);
+		$tagsIds = Set::extract('/id', $revOneTag);
+		sort($tagsIds);
+		$this->assertEqual($tagsIds , array(1,2,3));
 
 		$Comment->revertTo(1);
 
@@ -1303,7 +1307,10 @@ class RevisionTestCase extends CakeTestCase {
 		$Comment->id = 1;
 		$rev_one = $Comment->newest();
 		$this->assertEqual($rev_one['Comment']['title'],'Comment 1');
-		$this->assertEqual($rev_one['Comment']['Tag'], '1,2,3');
+		$revOneTag = json_decode($rev_one['Comment']['Tag'], true);
+		$tagsIds = Set::extract('/id', $revOneTag);
+		sort($tagsIds);
+		$this->assertEqual($tagsIds , array(1,2,3));
 	}
 
 	public function testHabtmRevRevertToDate() {
@@ -1431,8 +1438,14 @@ class RevisionTestCase extends CakeTestCase {
 		$result = $Comment->ShadowModel->find('all', array(
 			'conditions' => array('version_id' => array(4,5))
 		));
-		$this->assertEqual($result[0]['Comment']['Tag'],'3');
-		$this->assertEqual($result[1]['Comment']['Tag'],'2,3');
+		$res0Tag = json_decode($result[0]['Comment']['Tag'], true);
+		$tagsIds = Set::extract('/id', $res0Tag);
+		sort($tagsIds);
+		$this->assertEqual($tagsIds , array('3'));
+		$res1Tag = json_decode($result[1]['Comment']['Tag'], true);
+		$tagsIds = Set::extract('/id', $res1Tag);
+		sort($tagsIds);
+		$this->assertEqual($tagsIds , array('2', '3'));
 	}
 
 	public function testBadKittyForgotId() {
