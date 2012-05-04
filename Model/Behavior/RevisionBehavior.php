@@ -1012,6 +1012,7 @@ class RevisionBehavior extends ModelBehavior {
 		if ($Model->tablePrefix) {
 			$Model->ShadowModel->tablePrefix = $Model->tablePrefix;
 		}
+		ClassRegistry::removeObject($Model->ShadowModel->alias);
 		$Model->ShadowModel->alias = $Model->alias;
 		$Model->ShadowModel->primaryKey = 'version_id';
 		$Model->ShadowModel->order = 'version_created DESC, version_id DESC';
