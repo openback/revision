@@ -467,7 +467,7 @@ class RevisionTestCase extends CakeTestCase {
 		$Post->undo();
 
 		$Post->id = $id;
-		$this->assertFalse($Post->read());
+		$this->assertEmpty($Post->read());
 
 		$Post->undelete();
 		$result = $Post->read();
@@ -773,7 +773,7 @@ class RevisionTestCase extends CakeTestCase {
 		$Post->delete(3);
 
 		$result = $Post->find('first',array('conditions'=>array('id'=>3)));
-		$this->assertFalse($result);
+		$this->assertEmpty($result);
 
 		$Post->id = 3;
 		$this->assertTrue($Post->undelete());
